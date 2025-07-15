@@ -16,7 +16,7 @@ jobs:
     - uses: shivammathur/setup-php@v2                 # Acción recomendada por Laravel News :contentReference[oaicite:2]{index=2}
       with:
         php-version: '8.2'
-        extensions: pdo, sqlite
+        extensions: pdo, php-mysql, mysql-server
 
     # 3) Instalar dependencias
     - name: Install Composer dependencies
@@ -32,13 +32,13 @@ jobs:
     - name: Prepare database
       run: |
         mkdir -p database
-        touch database/database.sqlite       # truco clásico para SQLite en CI :contentReference[oaicite:5]{index=5}
+        touch database/database.sql      # truco clásico para SQLite en CI :contentReference[oaicite:5]{index=5}
         php artisan migrate --seed --no-interaction
 
     # 6) Ejecutar la suite de tests
     - name: Run PHPUnit tests
       env:
-        DB_CONNECTION: sqlite                # Forzar conexión testing
-        DB_DATABASE: database/database.sqlite
+        DB_CONNECTION: mysql                # Forzar conexión testing
+        DB_DATABASE: database/database.sql
       run: php artisan test                  # Sin --parallel → no necesita ParaTest
 
