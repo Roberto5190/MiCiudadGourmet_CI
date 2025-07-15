@@ -42,7 +42,3 @@ jobs:
         DB_DATABASE: database/database.sqlite
       run: php artisan test                  # Sin --parallel → no necesita ParaTest
 
-
-    # 8) Tests (sin --parallel ⇒ no necesita ParaTest)
-    - name: Ejecutar tests
-      run: php artisan test
