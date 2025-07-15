@@ -1,84 +1,44 @@
-name: Laravel CI – MySQL & ParaTest
+name: Laravel CI (SQLite)
 
 on:
-  push:    { branches: [main] }
-  pull_request: { branches: [main] }
+  push:          { branches: [main] }
+  pull_request:  { branches: [main] }
 
 jobs:
   tests:
     runs-on: ubuntu-latest
 
-    services:
-      mysql:
-        image: mysql:8
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: ci_test
-          MYSQL_USER: laravel
-          MYSQL_PASSWORD: secret
-        ports: [3306:3306]
-        options: >-
-          --health-cmd="mysqladmin ping --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=3
-
-    env:
-      APP_ENV: testing
-      DB_CONNECTION: mysql
-      DB_HOST: 127.0.0.1
-      DB_PORT: 3306
-      DB_DATABASE: ci_test
-      DB_USERNAME: laravel
-      DB_PASSWORD: secret
-      # Activa o desactiva los tests paralelos
-      APP_PARALLEL_TESTING: "true"
-
     steps:
-    - uses: actions/checkout@v4
+    # 1) Clonar el código
+    - uses: actions/checkout@v4                        # GitHub Actions oficial :contentReference[oaicite:1]{index=1}
 
-    - uses: shivammathur/setup-php@v2
+    # 2) Configurar PHP 8.2 con SQLite
+    - uses: shivammathur/setup-php@v2                 # Acción recomendada por Laravel News :contentReference[oaicite:2]{index=2}
       with:
         php-version: '8.2'
-        extensions: mbstring, bcmath, pdo_mysql
-        coverage: none
+        extensions: pdo, sqlite
 
-    # Cache Composer
-    - name: Composer cache dir
-      id: composer-cache
-      run: echo "dir=$(composer config cache-files-dir)" >>$GITHUB_OUTPUT
+    # 3) Instalar dependencias
+    - name: Install Composer dependencies
+      run: composer install --prefer-dist --no-interaction --no-progress   # Patrón del starter-workflow :contentReference[oaicite:3]{index=3}
 
-    - uses: actions/cache@v3
-      with:
-        path: ${{ steps.composer-cache.outputs.dir }}
-        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-        restore-keys: ${{ runner.os }}-composer-
+    # 4) Preparar el entorno
+    - name: Copy .env
+      run: cp .env.example .env
+    - name: Generate APP_KEY
+      run: php artisan key:generate                                        # Paso típico en docs y tutos :contentReference[oaicite:4]{index=4}
 
-    # Dependencias
-    - run: composer install --prefer-dist --no-interaction --no-progress
-
-    # ➜  Instalar ParaTest 7.x (solo primera vez; cacheará después)
-    - name: Install ParaTest
-      run: composer require --dev brianium/paratest:^7 --update-with-dependencies
-
-    # Preparar la app
-    - run: cp .env.example .env
-    - run: php artisan key:generate
-
-    # Esperar MySQL
-    - run: |
-        until mysql -h 127.0.0.1 -u laravel -psecret -e "SELECT 1"; do
-          sleep 1
-        done
-
-    # Migrar y poblar
-    - run: php artisan migrate --seed --no-interaction --force
-
-    # Tests (paralelos si la var = true)
-    - name: Run tests
+    # 5) Crear la BD SQLite y migrar
+    - name: Prepare database
       run: |
-        if [ "$APP_PARALLEL_TESTING" = "true" ]; then
-          php artisan test --parallel
-        else
-          php artisan test
-        fi
+        mkdir -p database
+        touch database/database.sqlite       # truco clásico para SQLite en CI :contentReference[oaicite:5]{index=5}
+        php artisan migrate --seed --no-interaction
+
+    # 6) Ejecutar la suite de tests
+    - name: Run PHPUnit tests
+      env:
+        DB_CONNECTION: sqlite                # Forzar conexión testing
+        DB_DATABASE: database/database.sqlite
+      run: php artisan test                  # Sin --parallel → no necesita ParaTest
+
