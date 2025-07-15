@@ -1,35 +1,28 @@
-name: Laravel CI – MySQL
+name: Laravel CI – MySQL & ParaTest
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  push:    { branches: [main] }
+  pull_request: { branches: [main] }
 
 jobs:
   tests:
     runs-on: ubuntu-latest
 
-    # ————————————————————————
-    # 1) Contenedor de MySQL 8
-    # ————————————————————————
     services:
       mysql:
-        image: mysql:8.0
+        image: mysql:8
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: ci_test
           MYSQL_USER: laravel
           MYSQL_PASSWORD: secret
-        ports:
-          - 3306:3306
+        ports: [3306:3306]
         options: >-
           --health-cmd="mysqladmin ping --silent"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=3
 
-    # Variables disponibles para todos los pasos
     env:
       APP_ENV: testing
       DB_CONNECTION: mysql
@@ -38,52 +31,54 @@ jobs:
       DB_DATABASE: ci_test
       DB_USERNAME: laravel
       DB_PASSWORD: secret
+      # Activa o desactiva los tests paralelos
+      APP_PARALLEL_TESTING: "true"
 
     steps:
-    # 2) Descarga del código
     - uses: actions/checkout@v4
 
-    # 3) PHP 8.2 + extensiones
     - uses: shivammathur/setup-php@v2
       with:
         php-version: '8.2'
         extensions: mbstring, bcmath, pdo_mysql
         coverage: none
 
-    # 4) Cache de dependencias Composer
-    - name: Obtener directorio de cache
+    # Cache Composer
+    - name: Composer cache dir
       id: composer-cache
-      run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+      run: echo "dir=$(composer config cache-files-dir)" >>$GITHUB_OUTPUT
 
-    - name: Cache Composer
-      uses: actions/cache@v3
+    - uses: actions/cache@v3
       with:
         path: ${{ steps.composer-cache.outputs.dir }}
         key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
         restore-keys: ${{ runner.os }}-composer-
 
-    # 5) Instalación de dependencias
-    - name: Instalar dependencias PHP
-      run: composer install --prefer-dist --no-interaction --no-progress
+    # Dependencias
+    - run: composer install --prefer-dist --no-interaction --no-progress
 
-    # 6) Preparar la aplicación
-    - name: Copiar .env
-      run: cp .env.example .env
+    # ➜  Instalar ParaTest 7.x (solo primera vez; cacheará después)
+    - name: Install ParaTest
+      run: composer require --dev brianium/paratest:^7 --update-with-dependencies
 
-    - name: Generar APP_KEY
-      run: php artisan key:generate
+    # Preparar la app
+    - run: cp .env.example .env
+    - run: php artisan key:generate
 
-    # 7) Esperar a que MySQL esté listo
-    - name: Esperar MySQL
-      run: |
+    # Esperar MySQL
+    - run: |
         until mysql -h 127.0.0.1 -u laravel -psecret -e "SELECT 1"; do
           sleep 1
         done
 
-    # 8) Migraciones y seeders
-    - name: Migrar base de datos
-      run: php artisan migrate --seed --no-interaction --force
+    # Migrar y poblar
+    - run: php artisan migrate --seed --no-interaction --force
 
-    # 9) Ejecutar tests (paralelos opcional)
-    - name: Ejecutar tests
-      run: php artisan test --parallel
+    # Tests (paralelos si la var = true)
+    - name: Run tests
+      run: |
+        if [ "$APP_PARALLEL_TESTING" = "true" ]; then
+          php artisan test --parallel
+        else
+          php artisan test
+        fi
